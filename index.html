@@ -30,7 +30,7 @@
     img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
     // Scaling based on map: 50m ≈ 96 pixels
-    const pixelsPerMeter = 192 / 50; // ≈ 3.84 pixels per meter
+    const pixelsPerMeter = 80 / 50; // ≈ 3.84 pixels per meter
 
     canvas.addEventListener('click', function(event) {
       const rect = canvas.getBoundingClientRect();
