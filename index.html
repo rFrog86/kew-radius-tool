@@ -15,6 +15,19 @@
   <div id="controls">
     <label for="radiusInput">Radius (meters):</label>
     <input type="number" id="radiusInput" value="50" min="1" />
+    
+    <label for="colorSelect">Color:</label>
+    <select id="colorSelect">
+      <option value="red">Red</option>
+      <option value="green">Green</option>
+    </select>
+
+    <label for="modeSelect">Mode:</label>
+    <select id="modeSelect">
+      <option value="circle">Circle</option>
+      <option value="line">Line</option>
+    </select>
+
     <button onclick="clearCanvas()">Clear</button>
   </div>
 
@@ -24,30 +37,53 @@
     const canvas = document.getElementById('mapCanvas');
     const ctx = canvas.getContext('2d');
     const radiusInput = document.getElementById('radiusInput');
+    const colorSelect = document.getElementById('colorSelect');
+    const modeSelect = document.getElementById('modeSelect');
 
     const img = new Image();
-    img.src = 'kew-map.jpg'; // Use same image file name
+    img.src = 'kew-map.jpg'; // Ensure this image exists
     img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-    // Scaling based on map: 50m ≈ 96 pixels
     const pixelsPerMeter = 29 / 50; // ≈ 3.84 pixels per meter
+
+    let lineStart = null;
 
     canvas.addEventListener('click', function(event) {
       const rect = canvas.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
-      const radiusMeters = parseFloat(radiusInput.value);
-      const radiusPixels = radiusMeters * pixelsPerMeter;
+      const color = colorSelect.value;
+      const mode = modeSelect.value;
 
-      drawShadedCircle(x, y, radiusPixels);
+      if (mode === 'circle') {
+        const radiusMeters = parseFloat(radiusInput.value);
+        const radiusPixels = radiusMeters * pixelsPerMeter;
+        drawShadedCircle(x, y, radiusPixels, color);
+      } else if (mode === 'line') {
+        if (!lineStart) {
+          lineStart = { x, y };
+        } else {
+          drawLine(lineStart.x, lineStart.y, x, y, color);
+          lineStart = null; // reset for next line
+        }
+      }
     });
 
-    function drawShadedCircle(x, y, r) {
+    function drawShadedCircle(x, y, r, color) {
       ctx.beginPath();
       ctx.arc(x, y, r, 0, 2 * Math.PI);
-      ctx.fillStyle = 'rgba(0, 128, 255, 0.3)';
+      ctx.fillStyle = color === 'green' ? 'rgba(0, 200, 0, 0.3)' : 'rgba(200, 0, 0, 0.3)';
       ctx.fill();
-      ctx.strokeStyle = 'rgba(0, 128, 255, 0.8)';
+      ctx.strokeStyle = color === 'green' ? 'rgba(0, 200, 0, 0.8)' : 'rgba(200, 0, 0, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function drawLine(x1, y1, x2, y2, color) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.strokeStyle = color === 'green' ? 'rgba(0, 200, 0, 0.8)' : 'rgba(200, 0, 0, 0.8)';
       ctx.lineWidth = 2;
       ctx.stroke();
     }
@@ -55,6 +91,7 @@
     function clearCanvas() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      lineStart = null;
     }
   </script>
 </body>
