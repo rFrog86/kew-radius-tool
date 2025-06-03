@@ -1,12 +1,59 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Kew Gardens Radius Tool</title>
   <style>
-    body { text-align: center; font-family: Arial; }
-    canvas { border: 1px solid #ccc; cursor: crosshair; max-width: 100%; height: auto; }
-    #controls { margin: 10px 0; }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #f7f7f7;
+    }
+
+    h2 {
+      margin-top: 20px;
+      color: #333;
+    }
+
+    #controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 15px;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #controls label {
+      font-weight: 500;
+    }
+
+    #controls input,
+    #controls select,
+    #controls button {
+      padding: 6px 10px;
+      font-size: 1rem;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+
+    canvas {
+      border: 1px solid #bbb;
+      width: 100%;
+      max-width: 1000px;
+      height: auto;
+      touch-action: none;
+    }
+
+    @media (max-width: 600px) {
+      #controls {
+        flex-direction: column;
+      }
+    }
   </style>
 </head>
 <body>
@@ -15,7 +62,7 @@
   <div id="controls">
     <label for="radiusInput">Radius (meters):</label>
     <input type="number" id="radiusInput" value="50" min="1" />
-    
+
     <label for="colorSelect">Color:</label>
     <select id="colorSelect">
       <option value="red">Red</option>
@@ -28,10 +75,11 @@
       <option value="line">Line</option>
     </select>
 
+    <button onclick="undo()">Undo</button>
     <button onclick="clearCanvas()">Clear</button>
   </div>
 
-  <canvas id="mapCanvas" width="1086" height="768"></canvas>
+  <canvas id="mapCanvas"></canvas>
 
   <script>
     const canvas = document.getElementById('mapCanvas');
@@ -41,33 +89,71 @@
     const modeSelect = document.getElementById('modeSelect');
 
     const img = new Image();
-    img.src = 'kew-map.jpg'; // Ensure this image exists
-    img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    img.src = 'kew-map.jpg'; // Make sure this image is present
+    const originalWidth = 1086;
+    const originalHeight = 768;
 
-    const pixelsPerMeter = 29 / 50; // ≈ 3.84 pixels per meter
-
+    let drawingHistory = [];
     let lineStart = null;
 
-    canvas.addEventListener('click', function(event) {
+    function resizeCanvas() {
+      const scale = window.devicePixelRatio || 1;
+      const containerWidth = canvas.parentElement.clientWidth;
+      const aspectRatio = originalWidth / originalHeight;
+      canvas.width = containerWidth * scale;
+      canvas.height = (containerWidth / aspectRatio) * scale;
+      canvas.style.width = `${containerWidth}px`;
+      canvas.style.height = `${containerWidth / aspectRatio}px`;
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      redraw();
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+
+    img.onload = () => {
+      resizeCanvas();
+    };
+
+    const pixelsPerMeterAtOriginal = 29 / 50; // ≈ 0.58
+    function getScaleFactor() {
+      return canvas.width / originalWidth;
+    }
+
+    canvas.addEventListener('click', function (event) {
       const rect = canvas.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const color = colorSelect.value;
+      const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+      const y = (event.clientY - rect.top) * (canvas.height / rect.height);
       const mode = modeSelect.value;
+      const color = colorSelect.value;
 
       if (mode === 'circle') {
         const radiusMeters = parseFloat(radiusInput.value);
-        const radiusPixels = radiusMeters * pixelsPerMeter;
-        drawShadedCircle(x, y, radiusPixels, color);
+        const radiusPixels = radiusMeters * pixelsPerMeterAtOriginal * getScaleFactor();
+        drawingHistory.push({ type: 'circle', x, y, r: radiusPixels, color });
+        redraw();
       } else if (mode === 'line') {
         if (!lineStart) {
           lineStart = { x, y };
         } else {
-          drawLine(lineStart.x, lineStart.y, x, y, color);
-          lineStart = null; // reset for next line
+          drawingHistory.push({ type: 'line', from: lineStart, to: { x, y }, color });
+          lineStart = null;
+          redraw();
         }
       }
     });
+
+    function redraw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      for (const shape of drawingHistory) {
+        if (shape.type === 'circle') {
+          drawShadedCircle(shape.x, shape.y, shape.r, shape.color);
+        } else if (shape.type === 'line') {
+          drawExtendedLine(shape.from.x, shape.from.y, shape.to.x, shape.to.y, shape.color);
+        }
+      }
+    }
 
     function drawShadedCircle(x, y, r, color) {
       ctx.beginPath();
@@ -79,6 +165,37 @@
       ctx.stroke();
     }
 
+    function drawExtendedLine(x1, y1, x2, y2, color) {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+
+      if (dx === 0) {
+        drawLine(x1, 0, x1, canvas.height, color);
+        return;
+      }
+
+      const m = dy / dx;
+      const b = y1 - m * x1;
+
+      const points = [];
+
+      let yAtLeft = m * 0 + b;
+      if (yAtLeft >= 0 && yAtLeft <= canvas.height) points.push({ x: 0, y: yAtLeft });
+
+      let yAtRight = m * canvas.width + b;
+      if (yAtRight >= 0 && yAtRight <= canvas.height) points.push({ x: canvas.width, y: yAtRight });
+
+      let xAtTop = (0 - b) / m;
+      if (xAtTop >= 0 && xAtTop <= canvas.width) points.push({ x: xAtTop, y: 0 });
+
+      let xAtBottom = (canvas.height - b) / m;
+      if (xAtBottom >= 0 && xAtBottom <= canvas.width) points.push({ x: xAtBottom, y: canvas.height });
+
+      if (points.length >= 2) {
+        drawLine(points[0].x, points[0].y, points[1].x, points[1].y, color);
+      }
+    }
+
     function drawLine(x1, y1, x2, y2, color) {
       ctx.beginPath();
       ctx.moveTo(x1, y1);
@@ -88,10 +205,17 @@
       ctx.stroke();
     }
 
+    function undo() {
+      if (drawingHistory.length > 0) {
+        drawingHistory.pop();
+        redraw();
+      }
+    }
+
     function clearCanvas() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      drawingHistory = [];
       lineStart = null;
+      redraw();
     }
   </script>
 </body>
