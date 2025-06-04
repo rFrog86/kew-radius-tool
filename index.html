@@ -247,11 +247,11 @@
       if (side === 'left') {
         // For left side, we need to include the appropriate canvas corners
         if (A * 0 + B * 0 + C > 0) {
-          ctx.lineTo(0, 0);
           ctx.lineTo(0, canvas.height);
+          ctx.lineTo(0, 0);
         } else {
-          ctx.lineTo(canvas.width, 0);
           ctx.lineTo(canvas.width, canvas.height);
+          ctx.lineTo(canvas.width, 0);
         }
       } else {
         // For right side
@@ -276,66 +276,56 @@
     function getExtendedLinePoints(x1, y1, x2, y2) {
       const points = [];
       
-      // Check intersection with top edge (y=0)
-      if (y1 !== y2) {
-        const t = -y1 / (y2 - y1);
-        if (t >= 0 && t <= 1) {
-          const x = x1 + t * (x2 - x1);
-          if (x >= 0 && x <= canvas.width) {
-            points.push({ x, y: 0 });
-          }
-        }
+      // Calculate line parameters
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      
+      // Handle vertical line case
+      if (dx === 0) {
+        return [
+          { x: x1, y: 0 },
+          { x: x1, y: canvas.height }
+        ];
       }
       
-      // Check intersection with bottom edge (y=canvas.height)
-      if (y1 !== y2) {
-        const t = (canvas.height - y1) / (y2 - y1);
-        if (t >= 0 && t <= 1) {
-          const x = x1 + t * (x2 - x1);
-          if (x >= 0 && x <= canvas.width) {
-            points.push({ x, y: canvas.height });
-          }
-        }
+      // Handle horizontal line case
+      if (dy === 0) {
+        return [
+          { x: 0, y: y1 },
+          { x: canvas.width, y: y1 }
+        ];
       }
       
-      // Check intersection with left edge (x=0)
-      if (x1 !== x2) {
-        const t = -x1 / (x2 - x1);
-        if (t >= 0 && t <= 1) {
-          const y = y1 + t * (y2 - y1);
-          if (y >= 0 && y <= canvas.height) {
-            points.push({ x: 0, y });
-          }
-        }
+      // Calculate intersection with all four edges
+      // Top edge (y = 0)
+      const topX = x1 + (0 - y1) * dx / dy;
+      if (topX >= 0 && topX <= canvas.width) {
+        points.push({ x: topX, y: 0 });
       }
       
-      // Check intersection with right edge (x=canvas.width)
-      if (x1 !== x2) {
-        const t = (canvas.width - x1) / (x2 - x1);
-        if (t >= 0 && t <= 1) {
-          const y = y1 + t * (y2 - y1);
-          if (y >= 0 && y <= canvas.height) {
-            points.push({ x: canvas.width, y });
-          }
-        }
+      // Bottom edge (y = canvas.height)
+      const bottomX = x1 + (canvas.height - y1) * dx / dy;
+      if (bottomX >= 0 && bottomX <= canvas.width) {
+        points.push({ x: bottomX, y: canvas.height });
       }
       
-      // We need exactly 2 distinct points
-      const uniquePoints = [];
-      const pointSet = new Set();
-      
-      for (const point of points) {
-        const key = `${point.x},${point.y}`;
-        if (!pointSet.has(key)) {
-          pointSet.add(key);
-          uniquePoints.push(point);
-        }
+      // Left edge (x = 0)
+      const leftY = y1 + (0 - x1) * dy / dx;
+      if (leftY >= 0 && leftY <= canvas.height) {
+        points.push({ x: 0, y: leftY });
       }
       
-      if (uniquePoints.length >= 2) {
+      // Right edge (x = canvas.width)
+      const rightY = y1 + (canvas.width - x1) * dy / dx;
+      if (rightY >= 0 && rightY <= canvas.height) {
+        points.push({ x: canvas.width, y: rightY });
+      }
+      
+      // We should have exactly 2 points where the line intersects canvas edges
+      if (points.length >= 2) {
         // Sort points to maintain consistent order
-        uniquePoints.sort((a, b) => a.x - b.x || a.y - b.y);
-        return [uniquePoints[0], uniquePoints[uniquePoints.length - 1]];
+        points.sort((a, b) => a.x - b.x || a.y - b.y);
+        return [points[0], points[points.length - 1]];
       }
       
       // Fallback - return original points if we can't find intersections
