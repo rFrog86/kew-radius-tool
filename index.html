@@ -91,7 +91,7 @@
     const modeSelect = document.getElementById('modeSelect');
 
     const img = new Image();
-    img.src = 'kew-map.jpg'; // Make sure this image is in your repo
+    img.src = 'kew-map.jpg';
 
     const originalWidth = 1086;
     const originalHeight = 768;
@@ -147,7 +147,7 @@
           const shape = drawingHistory[i];
           if (shape.type === 'line') {
             const distance = distanceToLine(x, y, shape.from.x, shape.from.y, shape.to.x, shape.to.y);
-            if (distance < minDistance && distance < 20) { // 20 pixels threshold
+            if (distance < minDistance && distance < 20) {
               minDistance = distance;
               closestLine = shape;
               closestIndex = i;
@@ -159,7 +159,7 @@
           // Determine which side of the line was clicked
           const side = getSideOfLine(x, y, closestLine.from.x, closestLine.from.y, closestLine.to.x, closestLine.to.y);
           
-          // Create a new shaded line object (don't modify the original)
+          // Create a new shaded line object
           const shadedLine = {
             ...closestLine,
             shadedSide: side,
@@ -175,7 +175,6 @@
     });
 
     function distanceToLine(x, y, x1, y1, x2, y2) {
-      // Calculate distance from point (x,y) to line segment (x1,y1)-(x2,y2)
       const A = x - x1;
       const B = y - y1;
       const C = x2 - x1;
@@ -205,8 +204,6 @@
     }
 
     function getSideOfLine(x, y, x1, y1, x2, y2) {
-      // Calculate which side of the line the point is on
-      // Returns 'left' or 'right' relative to the line direction
       return ((x2 - x1) * (y - y1) - (y2 - y1) * (x - x1)) > 0 ? 'left' : 'right';
     }
 
@@ -220,7 +217,6 @@
         } else if (shape.type === 'line') {
           drawExtendedLine(shape.from.x, shape.from.y, shape.to.x, shape.to.y, shape.color);
           
-          // Draw shaded area if defined
           if (shape.shadedSide) {
             drawShadedArea(shape.from.x, shape.from.y, shape.to.x, shape.to.y, shape.shadedSide, shape.shadeColor);
           }
@@ -229,7 +225,7 @@
     }
 
     function drawShadedArea(x1, y1, x2, y2, side, color) {
-      // Get the extended line points (from edge to edge of canvas)
+      // Get the extended line points
       const extendedPoints = getExtendedLinePoints(x1, y1, x2, y2);
       if (!extendedPoints || extendedPoints.length < 2) return;
       
@@ -242,53 +238,29 @@
       // Draw to second extended point
       ctx.lineTo(extendedPoints[1].x, extendedPoints[1].y);
       
-      // Now draw to canvas corners based on which side to shade
+      // Calculate line equation: Ax + By + C = 0
+      const A = y2 - y1;
+      const B = x1 - x2;
+      const C = x2 * y1 - x1 * y2;
+      
+      // Determine which corners to use based on side
       if (side === 'left') {
-        // For left side, we need to determine which corners to use
-        if (extendedPoints[0].x === 0 && extendedPoints[1].x === canvas.width) {
-          // Line goes from left to right edge
-          if (extendedPoints[0].y < extendedPoints[1].y) {
-            // Top-left to bottom-right
-            ctx.lineTo(0, canvas.height);
-          } else {
-            // Bottom-left to top-right
-            ctx.lineTo(0, 0);
-          }
-        } else if (extendedPoints[0].y === 0 && extendedPoints[1].y === canvas.height) {
-          // Line goes from top to bottom edge
-          if (extendedPoints[0].x < extendedPoints[1].x) {
-            // Top-left to bottom-right
-            ctx.lineTo(0, canvas.height);
-          } else {
-            // Top-right to bottom-left
-            ctx.lineTo(0, 0);
-          }
-        } else {
-          // Default case (shouldn't normally happen)
+        // For left side, we need to include the appropriate canvas corners
+        if (A * 0 + B * 0 + C > 0) {
+          ctx.lineTo(0, 0);
           ctx.lineTo(0, canvas.height);
-        }
-      } else { // right side
-        if (extendedPoints[0].x === 0 && extendedPoints[1].x === canvas.width) {
-          // Line goes from left to right edge
-          if (extendedPoints[0].y < extendedPoints[1].y) {
-            // Top-left to bottom-right
-            ctx.lineTo(canvas.width, 0);
-          } else {
-            // Bottom-left to top-right
-            ctx.lineTo(canvas.width, canvas.height);
-          }
-        } else if (extendedPoints[0].y === 0 && extendedPoints[1].y === canvas.height) {
-          // Line goes from top to bottom edge
-          if (extendedPoints[0].x < extendedPoints[1].x) {
-            // Top-left to bottom-right
-            ctx.lineTo(canvas.width, 0);
-          } else {
-            // Top-right to bottom-left
-            ctx.lineTo(canvas.width, canvas.height);
-          }
         } else {
-          // Default case (shouldn't normally happen)
           ctx.lineTo(canvas.width, 0);
+          ctx.lineTo(canvas.width, canvas.height);
+        }
+      } else {
+        // For right side
+        if (A * 0 + B * 0 + C > 0) {
+          ctx.lineTo(canvas.width, 0);
+          ctx.lineTo(canvas.width, canvas.height);
+        } else {
+          ctx.lineTo(0, 0);
+          ctx.lineTo(0, canvas.height);
         }
       }
       
@@ -302,7 +274,6 @@
     }
 
     function getExtendedLinePoints(x1, y1, x2, y2) {
-      // Calculate where the line intersects with canvas edges
       const points = [];
       
       // Check intersection with top edge (y=0)
@@ -349,14 +320,25 @@
         }
       }
       
-      // We should have exactly 2 points where the line intersects canvas edges
-      if (points.length >= 2) {
-        // Sort points to maintain consistent order
-        points.sort((a, b) => a.x - b.x || a.y - b.y);
-        return [points[0], points[points.length - 1]];
+      // We need exactly 2 distinct points
+      const uniquePoints = [];
+      const pointSet = new Set();
+      
+      for (const point of points) {
+        const key = `${point.x},${point.y}`;
+        if (!pointSet.has(key)) {
+          pointSet.add(key);
+          uniquePoints.push(point);
+        }
       }
       
-      // If we somehow don't have 2 points, return the original line
+      if (uniquePoints.length >= 2) {
+        // Sort points to maintain consistent order
+        uniquePoints.sort((a, b) => a.x - b.x || a.y - b.y);
+        return [uniquePoints[0], uniquePoints[uniquePoints.length - 1]];
+      }
+      
+      // Fallback - return original points if we can't find intersections
       return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
     }
 
@@ -398,10 +380,10 @@
     }
 
     function downloadImage() {
-     const link = document.createElement('a');
-     link.download = 'kew-radius-map.png';
-     link.href = canvas.toDataURL('image/png');
-     link.click();
+      const link = document.createElement('a');
+      link.download = 'kew-radius-map.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
     }
   </script>
 </body>
