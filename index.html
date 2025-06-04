@@ -98,7 +98,6 @@
 
     let drawingHistory = [];
     let lineStart = null;
-    let shadingLine = null;
 
     // Pixels per meter in original map
     const pixelsPerMeter = 29 / 50;
@@ -142,13 +141,16 @@
         // Find the closest line to click position
         let closestLine = null;
         let minDistance = Infinity;
+        let closestIndex = -1;
         
-        for (const shape of drawingHistory) {
+        for (let i = 0; i < drawingHistory.length; i++) {
+          const shape = drawingHistory[i];
           if (shape.type === 'line') {
             const distance = distanceToLine(x, y, shape.from.x, shape.from.y, shape.to.x, shape.to.y);
             if (distance < minDistance && distance < 20) { // 20 pixels threshold
               minDistance = distance;
               closestLine = shape;
+              closestIndex = i;
             }
           }
         }
@@ -156,8 +158,17 @@
         if (closestLine) {
           // Determine which side of the line was clicked
           const side = getSideOfLine(x, y, closestLine.from.x, closestLine.from.y, closestLine.to.x, closestLine.to.y);
-          closestLine.shadedSide = side;
-          closestLine.shadeColor = color;
+          
+          // Create a new shaded line object (don't modify the original)
+          const shadedLine = {
+            ...closestLine,
+            shadedSide: side,
+            shadeColor: color
+          };
+          
+          // Replace the original line in history
+          drawingHistory[closestIndex] = shadedLine;
+          
           redraw();
         }
       }
@@ -195,7 +206,8 @@
 
     function getSideOfLine(x, y, x1, y1, x2, y2) {
       // Calculate which side of the line the point is on
-      return (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1) > 0 ? 'right' : 'left';
+      // Returns 'left' or 'right' relative to the line direction
+      return ((x2 - x1) * (y - y1) - (y2 - y1) * (x - x1)) > 0 ? 'left' : 'right';
     }
 
     function redraw() {
@@ -217,57 +229,66 @@
     }
 
     function drawShadedArea(x1, y1, x2, y2, side, color) {
-      // Get the extended line points
-      const linePoints = getExtendedLinePoints(x1, y1, x2, y2);
-      if (!linePoints || linePoints.length < 2) return;
+      // Get the extended line points (from edge to edge of canvas)
+      const extendedPoints = getExtendedLinePoints(x1, y1, x2, y2);
+      if (!extendedPoints || extendedPoints.length < 2) return;
       
       ctx.save();
       ctx.beginPath();
       
       // Start at first extended point
-      ctx.moveTo(linePoints[0].x, linePoints[0].y);
+      ctx.moveTo(extendedPoints[0].x, extendedPoints[0].y);
       
       // Draw to second extended point
-      ctx.lineTo(linePoints[1].x, linePoints[1].y);
+      ctx.lineTo(extendedPoints[1].x, extendedPoints[1].y);
       
-      // Then draw to a corner based on which side to shade
+      // Now draw to canvas corners based on which side to shade
       if (side === 'left') {
-        if (x1 === x2) { // Vertical line
-          if (y1 < y2) {
+        // For left side, we need to determine which corners to use
+        if (extendedPoints[0].x === 0 && extendedPoints[1].x === canvas.width) {
+          // Line goes from left to right edge
+          if (extendedPoints[0].y < extendedPoints[1].y) {
+            // Top-left to bottom-right
             ctx.lineTo(0, canvas.height);
-            ctx.lineTo(0, 0);
           } else {
+            // Bottom-left to top-right
             ctx.lineTo(0, 0);
+          }
+        } else if (extendedPoints[0].y === 0 && extendedPoints[1].y === canvas.height) {
+          // Line goes from top to bottom edge
+          if (extendedPoints[0].x < extendedPoints[1].x) {
+            // Top-left to bottom-right
             ctx.lineTo(0, canvas.height);
+          } else {
+            // Top-right to bottom-left
+            ctx.lineTo(0, 0);
           }
         } else {
-          const slope = (y2 - y1) / (x2 - x1);
-          if (slope > 0) {
-            ctx.lineTo(0, 0);
-            ctx.lineTo(0, canvas.height);
-          } else {
-            ctx.lineTo(0, canvas.height);
-            ctx.lineTo(0, 0);
-          }
+          // Default case (shouldn't normally happen)
+          ctx.lineTo(0, canvas.height);
         }
       } else { // right side
-        if (x1 === x2) { // Vertical line
-          if (y1 < y2) {
+        if (extendedPoints[0].x === 0 && extendedPoints[1].x === canvas.width) {
+          // Line goes from left to right edge
+          if (extendedPoints[0].y < extendedPoints[1].y) {
+            // Top-left to bottom-right
             ctx.lineTo(canvas.width, 0);
-            ctx.lineTo(canvas.width, canvas.height);
           } else {
+            // Bottom-left to top-right
             ctx.lineTo(canvas.width, canvas.height);
+          }
+        } else if (extendedPoints[0].y === 0 && extendedPoints[1].y === canvas.height) {
+          // Line goes from top to bottom edge
+          if (extendedPoints[0].x < extendedPoints[1].x) {
+            // Top-left to bottom-right
             ctx.lineTo(canvas.width, 0);
+          } else {
+            // Top-right to bottom-left
+            ctx.lineTo(canvas.width, canvas.height);
           }
         } else {
-          const slope = (y2 - y1) / (x2 - x1);
-          if (slope > 0) {
-            ctx.lineTo(canvas.width, canvas.height);
-            ctx.lineTo(canvas.width, 0);
-          } else {
-            ctx.lineTo(canvas.width, 0);
-            ctx.lineTo(canvas.width, canvas.height);
-          }
+          // Default case (shouldn't normally happen)
+          ctx.lineTo(canvas.width, 0);
         }
       }
       
@@ -281,38 +302,62 @@
     }
 
     function getExtendedLinePoints(x1, y1, x2, y2) {
-      const dx = x2 - x1;
-      const dy = y2 - y1;
-
-      if (dx === 0) {
-        return [{ x: x1, y: 0 }, { x: x1, y: canvas.height }];
-      }
-
-      const m = dy / dx;
-      const b = y1 - m * x1;
-
+      // Calculate where the line intersects with canvas edges
       const points = [];
-
-      let yAtLeft = m * 0 + b;
-      if (yAtLeft >= 0 && yAtLeft <= canvas.height) points.push({ x: 0, y: yAtLeft });
-
-      let yAtRight = m * canvas.width + b;
-      if (yAtRight >= 0 && yAtRight <= canvas.height) points.push({ x: canvas.width, y: yAtRight });
-
-      let xAtTop = (0 - b) / m;
-      if (xAtTop >= 0 && xAtTop <= canvas.width) points.push({ x: xAtTop, y: 0 });
-
-      let xAtBottom = (canvas.height - b) / m;
-      if (xAtBottom >= 0 && xAtBottom <= canvas.width) points.push({ x: xAtBottom, y: canvas.height });
-
-      // Return the two points that are on the canvas edges
+      
+      // Check intersection with top edge (y=0)
+      if (y1 !== y2) {
+        const t = -y1 / (y2 - y1);
+        if (t >= 0 && t <= 1) {
+          const x = x1 + t * (x2 - x1);
+          if (x >= 0 && x <= canvas.width) {
+            points.push({ x, y: 0 });
+          }
+        }
+      }
+      
+      // Check intersection with bottom edge (y=canvas.height)
+      if (y1 !== y2) {
+        const t = (canvas.height - y1) / (y2 - y1);
+        if (t >= 0 && t <= 1) {
+          const x = x1 + t * (x2 - x1);
+          if (x >= 0 && x <= canvas.width) {
+            points.push({ x, y: canvas.height });
+          }
+        }
+      }
+      
+      // Check intersection with left edge (x=0)
+      if (x1 !== x2) {
+        const t = -x1 / (x2 - x1);
+        if (t >= 0 && t <= 1) {
+          const y = y1 + t * (y2 - y1);
+          if (y >= 0 && y <= canvas.height) {
+            points.push({ x: 0, y });
+          }
+        }
+      }
+      
+      // Check intersection with right edge (x=canvas.width)
+      if (x1 !== x2) {
+        const t = (canvas.width - x1) / (x2 - x1);
+        if (t >= 0 && t <= 1) {
+          const y = y1 + t * (y2 - y1);
+          if (y >= 0 && y <= canvas.height) {
+            points.push({ x: canvas.width, y });
+          }
+        }
+      }
+      
+      // We should have exactly 2 points where the line intersects canvas edges
       if (points.length >= 2) {
         // Sort points to maintain consistent order
         points.sort((a, b) => a.x - b.x || a.y - b.y);
         return [points[0], points[points.length - 1]];
       }
       
-      return null;
+      // If we somehow don't have 2 points, return the original line
+      return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
     }
 
     function drawShadedCircle(x, y, r, color) {
