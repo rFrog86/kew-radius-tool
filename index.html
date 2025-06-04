@@ -98,6 +98,7 @@
 
     let drawingHistory = [];
     let lineStart = null;
+    let shadingLine = null;
 
     // Pixels per meter in original map
     const pixelsPerMeter = 29 / 50;
@@ -137,8 +138,65 @@
           lineStart = null;
           redraw();
         }
+      } else if (mode === 'shade') {
+        // Find the closest line to click position
+        let closestLine = null;
+        let minDistance = Infinity;
+        
+        for (const shape of drawingHistory) {
+          if (shape.type === 'line') {
+            const distance = distanceToLine(x, y, shape.from.x, shape.from.y, shape.to.x, shape.to.y);
+            if (distance < minDistance && distance < 20) { // 20 pixels threshold
+              minDistance = distance;
+              closestLine = shape;
+            }
+          }
+        }
+        
+        if (closestLine) {
+          // Determine which side of the line was clicked
+          const side = getSideOfLine(x, y, closestLine.from.x, closestLine.from.y, closestLine.to.x, closestLine.to.y);
+          closestLine.shadedSide = side;
+          closestLine.shadeColor = color;
+          redraw();
+        }
       }
     });
+
+    function distanceToLine(x, y, x1, y1, x2, y2) {
+      // Calculate distance from point (x,y) to line segment (x1,y1)-(x2,y2)
+      const A = x - x1;
+      const B = y - y1;
+      const C = x2 - x1;
+      const D = y2 - y1;
+
+      const dot = A * C + B * D;
+      const len_sq = C * C + D * D;
+      let param = -1;
+      if (len_sq !== 0) param = dot / len_sq;
+
+      let xx, yy;
+
+      if (param < 0) {
+        xx = x1;
+        yy = y1;
+      } else if (param > 1) {
+        xx = x2;
+        yy = y2;
+      } else {
+        xx = x1 + param * C;
+        yy = y1 + param * D;
+      }
+
+      const dx = x - xx;
+      const dy = y - yy;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function getSideOfLine(x, y, x1, y1, x2, y2) {
+      // Calculate which side of the line the point is on
+      return (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1) > 0 ? 'right' : 'left';
+    }
 
     function redraw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -149,27 +207,85 @@
           drawShadedCircle(shape.x, shape.y, shape.r, shape.color);
         } else if (shape.type === 'line') {
           drawExtendedLine(shape.from.x, shape.from.y, shape.to.x, shape.to.y, shape.color);
+          
+          // Draw shaded area if defined
+          if (shape.shadedSide) {
+            drawShadedArea(shape.from.x, shape.from.y, shape.to.x, shape.to.y, shape.shadedSide, shape.shadeColor);
+          }
         }
       }
     }
 
-    function drawShadedCircle(x, y, r, color) {
+    function drawShadedArea(x1, y1, x2, y2, side, color) {
+      // Get the extended line points
+      const linePoints = getExtendedLinePoints(x1, y1, x2, y2);
+      if (!linePoints || linePoints.length < 2) return;
+      
+      ctx.save();
       ctx.beginPath();
-      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      
+      // Start at first extended point
+      ctx.moveTo(linePoints[0].x, linePoints[0].y);
+      
+      // Draw to second extended point
+      ctx.lineTo(linePoints[1].x, linePoints[1].y);
+      
+      // Then draw to a corner based on which side to shade
+      if (side === 'left') {
+        if (x1 === x2) { // Vertical line
+          if (y1 < y2) {
+            ctx.lineTo(0, canvas.height);
+            ctx.lineTo(0, 0);
+          } else {
+            ctx.lineTo(0, 0);
+            ctx.lineTo(0, canvas.height);
+          }
+        } else {
+          const slope = (y2 - y1) / (x2 - x1);
+          if (slope > 0) {
+            ctx.lineTo(0, 0);
+            ctx.lineTo(0, canvas.height);
+          } else {
+            ctx.lineTo(0, canvas.height);
+            ctx.lineTo(0, 0);
+          }
+        }
+      } else { // right side
+        if (x1 === x2) { // Vertical line
+          if (y1 < y2) {
+            ctx.lineTo(canvas.width, 0);
+            ctx.lineTo(canvas.width, canvas.height);
+          } else {
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.lineTo(canvas.width, 0);
+          }
+        } else {
+          const slope = (y2 - y1) / (x2 - x1);
+          if (slope > 0) {
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.lineTo(canvas.width, 0);
+          } else {
+            ctx.lineTo(canvas.width, 0);
+            ctx.lineTo(canvas.width, canvas.height);
+          }
+        }
+      }
+      
+      // Close the path back to start
+      ctx.closePath();
+      
+      // Fill with semi-transparent color
       ctx.fillStyle = color === 'green' ? 'rgba(0, 200, 0, 0.3)' : 'rgba(200, 0, 0, 0.3)';
       ctx.fill();
-      ctx.strokeStyle = color === 'green' ? 'rgba(0, 200, 0, 0.8)' : 'rgba(200, 0, 0, 0.8)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      ctx.restore();
     }
 
-    function drawExtendedLine(x1, y1, x2, y2, color) {
+    function getExtendedLinePoints(x1, y1, x2, y2) {
       const dx = x2 - x1;
       const dy = y2 - y1;
 
       if (dx === 0) {
-        drawLine(x1, 0, x1, canvas.height, color);
-        return;
+        return [{ x: x1, y: 0 }, { x: x1, y: canvas.height }];
       }
 
       const m = dy / dx;
@@ -189,7 +305,29 @@
       let xAtBottom = (canvas.height - b) / m;
       if (xAtBottom >= 0 && xAtBottom <= canvas.width) points.push({ x: xAtBottom, y: canvas.height });
 
+      // Return the two points that are on the canvas edges
       if (points.length >= 2) {
+        // Sort points to maintain consistent order
+        points.sort((a, b) => a.x - b.x || a.y - b.y);
+        return [points[0], points[points.length - 1]];
+      }
+      
+      return null;
+    }
+
+    function drawShadedCircle(x, y, r, color) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      ctx.fillStyle = color === 'green' ? 'rgba(0, 200, 0, 0.3)' : 'rgba(200, 0, 0, 0.3)';
+      ctx.fill();
+      ctx.strokeStyle = color === 'green' ? 'rgba(0, 200, 0, 0.8)' : 'rgba(200, 0, 0, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function drawExtendedLine(x1, y1, x2, y2, color) {
+      const points = getExtendedLinePoints(x1, y1, x2, y2);
+      if (points && points.length >= 2) {
         drawLine(points[0].x, points[0].y, points[1].x, points[1].y, color);
       }
     }
