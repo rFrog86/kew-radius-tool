@@ -71,7 +71,6 @@
     <select id="modeSelect">
       <option value="circle">Circle</option>
       <option value="line">Line</option>
-      <option value="shade">Shade Side</option>
     </select>
 
     <button onclick="undo()">Undo</button>
@@ -136,23 +135,6 @@
           drawingHistory.push({ type: 'line', from: lineStart, to: { x, y }, color });
           lineStart = null;
           redraw();
-        }
-      } else if (mode === 'shade') {
-        // Find the closest line to click position
-        let closestLine = null;
-        let minDistance = Infinity;
-        let closestIndex = -1;
-        
-        for (let i = 0; i < drawingHistory.length; i++) {
-          const shape = drawingHistory[i];
-          if (shape.type === 'line') {
-            const distance = distanceToLine(x, y, shape.from.x, shape.from.y, shape.to.x, shape.to.y);
-            if (distance < minDistance && distance < 20) {
-              minDistance = distance;
-              closestLine = shape;
-              closestIndex = i;
-            }
-          }
         }
         
         if (closestLine) {
