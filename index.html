@@ -57,15 +57,14 @@
       width: 100%;
       max-width: 1086px;
       position: relative;
-      overflow: hidden;
+      overflow: auto;
       margin: 10px 0;
+      background-color: #fff;
+      border: 1px solid #ccc;
     }
 
     canvas {
-      width: 100%;
-      height: auto;
       display: block;
-      border: 1px solid #ccc;
       background-color: #fff;
       touch-action: none;
     }
@@ -162,30 +161,30 @@
 
     function resizeCanvas() {
       const wrapper = document.getElementById('canvasWrapper');
-      const displayWidth = wrapper.clientWidth;
-      const displayHeight = displayWidth * (originalHeight / originalWidth);
+      const maxDisplayWidth = Math.min(wrapper.clientWidth, originalWidth);
+      const displayHeight = maxDisplayWidth * (originalHeight / originalWidth);
       
       // Set the canvas display size
-      canvas.style.width = displayWidth + 'px';
+      canvas.style.width = maxDisplayWidth + 'px';
       canvas.style.height = displayHeight + 'px';
       
       // Set the canvas drawing buffer size (accounting for device pixel ratio)
-      canvas.width = Math.floor(displayWidth * devicePixelRatio);
-      canvas.height = Math.floor(displayHeight * devicePixelRatio);
+      canvas.width = Math.floor(originalWidth * devicePixelRatio);
+      canvas.height = Math.floor(originalHeight * devicePixelRatio);
       
       // Calculate the scale factor for drawing operations
-      scaleFactor = canvas.width / originalWidth;
+      scaleFactor = maxDisplayWidth / originalWidth;
       
       // Scale the context to account for the pixel ratio
-      ctx.scale(devicePixelRatio, devicePixelRatio);
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
       
       redraw();
     }
 
     function getCanvasCoordinates(event) {
       const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / devicePixelRatio / rect.width;
-      const scaleY = canvas.height / devicePixelRatio / rect.height;
+      const scaleX = originalWidth / rect.width;
+      const scaleY = originalHeight / rect.height;
       
       let clientX, clientY;
       
@@ -213,7 +212,7 @@
 
       if (mode === 'circle') {
         const radiusMeters = parseFloat(radiusInput.value);
-        const radiusPixels = radiusMeters * pixelsPerMeter * scaleFactor;
+        const radiusPixels = radiusMeters * pixelsPerMeter;
         drawingHistory.push({ type: 'circle', x, y, r: radiusPixels, color });
         redraw();
       } else if (mode === 'line') {
@@ -266,13 +265,10 @@
 
     function redraw() {
       // Clear the canvas
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, originalWidth, originalHeight);
       
-      // Draw the image at high resolution
-      ctx.save();
-      ctx.scale(devicePixelRatio, devicePixelRatio);
-      ctx.drawImage(img, 0, 0, canvas.width / devicePixelRatio, canvas.height / devicePixelRatio);
-      ctx.restore();
+      // Draw the image at original size
+      ctx.drawImage(img, 0, 0, originalWidth, originalHeight);
 
       // Draw all shapes
       for (const shape of drawingHistory) {
@@ -307,24 +303,21 @@
       const C = x2 * y1 - x1 * y2;
       
       // Determine which corners to use based on side
-      const displayWidth = canvas.width / devicePixelRatio;
-      const displayHeight = canvas.height / devicePixelRatio;
-      
       if (side === 'left') {
         if (A * 0 + B * 0 + C > 0) {
-          ctx.lineTo(0, displayHeight);
+          ctx.lineTo(0, originalHeight);
           ctx.lineTo(0, 0);
         } else {
-          ctx.lineTo(displayWidth, displayHeight);
-          ctx.lineTo(displayWidth, 0);
+          ctx.lineTo(originalWidth, originalHeight);
+          ctx.lineTo(originalWidth, 0);
         }
       } else {
         if (A * 0 + B * 0 + C > 0) {
-          ctx.lineTo(displayWidth, 0);
-          ctx.lineTo(displayWidth, displayHeight);
+          ctx.lineTo(originalWidth, 0);
+          ctx.lineTo(originalWidth, originalHeight);
         } else {
           ctx.lineTo(0, 0);
-          ctx.lineTo(0, displayHeight);
+          ctx.lineTo(0, originalHeight);
         }
       }
       
@@ -339,8 +332,6 @@
 
     function getExtendedLinePoints(x1, y1, x2, y2) {
       const points = [];
-      const displayWidth = canvas.width / devicePixelRatio;
-      const displayHeight = canvas.height / devicePixelRatio;
       
       // Calculate line parameters
       const dx = x2 - x1;
@@ -350,7 +341,7 @@
       if (dx === 0) {
         return [
           { x: x1, y: 0 },
-          { x: x1, y: displayHeight }
+          { x: x1, y: originalHeight }
         ];
       }
       
@@ -358,33 +349,33 @@
       if (dy === 0) {
         return [
           { x: 0, y: y1 },
-          { x: displayWidth, y: y1 }
+          { x: originalWidth, y: y1 }
         ];
       }
       
       // Calculate intersection with all four edges
       // Top edge (y = 0)
       const topX = x1 + (0 - y1) * dx / dy;
-      if (topX >= 0 && topX <= displayWidth) {
+      if (topX >= 0 && topX <= originalWidth) {
         points.push({ x: topX, y: 0 });
       }
       
-      // Bottom edge (y = displayHeight)
-      const bottomX = x1 + (displayHeight - y1) * dx / dy;
-      if (bottomX >= 0 && bottomX <= displayWidth) {
-        points.push({ x: bottomX, y: displayHeight });
+      // Bottom edge (y = originalHeight)
+      const bottomX = x1 + (originalHeight - y1) * dx / dy;
+      if (bottomX >= 0 && bottomX <= originalWidth) {
+        points.push({ x: bottomX, y: originalHeight });
       }
       
       // Left edge (x = 0)
       const leftY = y1 + (0 - x1) * dy / dx;
-      if (leftY >= 0 && leftY <= displayHeight) {
+      if (leftY >= 0 && leftY <= originalHeight) {
         points.push({ x: 0, y: leftY });
       }
       
-      // Right edge (x = displayWidth)
-      const rightY = y1 + (displayWidth - x1) * dy / dx;
-      if (rightY >= 0 && rightY <= displayHeight) {
-        points.push({ x: displayWidth, y: rightY });
+      // Right edge (x = originalWidth)
+      const rightY = y1 + (originalWidth - x1) * dy / dx;
+      if (rightY >= 0 && rightY <= originalHeight) {
+        points.push({ x: originalWidth, y: rightY });
       }
       
       // We should have exactly 2 points where the line intersects canvas edges
@@ -448,25 +439,17 @@
       tempCtx.drawImage(img, 0, 0, originalWidth, originalHeight);
       
       // Redraw all shapes at original scale
-      const tempScale = originalWidth / (canvas.width / devicePixelRatio);
-      
       for (const shape of drawingHistory) {
         if (shape.type === 'circle') {
-          const originalR = shape.r / tempScale;
           tempCtx.beginPath();
-          tempCtx.arc(shape.x / tempScale, shape.y / tempScale, originalR, 0, 2 * Math.PI);
+          tempCtx.arc(shape.x, shape.y, shape.r, 0, 2 * Math.PI);
           tempCtx.fillStyle = shape.color === 'green' ? 'rgba(0, 200, 0, 0.3)' : 'rgba(200, 0, 0, 0.3)';
           tempCtx.fill();
           tempCtx.strokeStyle = shape.color === 'green' ? 'rgba(0, 200, 0, 0.8)' : 'rgba(200, 0, 0, 0.8)';
           tempCtx.lineWidth = 2;
           tempCtx.stroke();
         } else if (shape.type === 'line') {
-          const fromX = shape.from.x / tempScale;
-          const fromY = shape.from.y / tempScale;
-          const toX = shape.to.x / tempScale;
-          const toY = shape.to.y / tempScale;
-          
-          const points = getExtendedLinePointsForDownload(fromX, fromY, toX, toY);
+          const points = getExtendedLinePoints(shape.from.x, shape.from.y, shape.to.x, shape.to.y);
           if (points && points.length >= 2) {
             tempCtx.beginPath();
             tempCtx.moveTo(points[0].x, points[0].y);
@@ -481,9 +464,9 @@
             tempCtx.moveTo(points[0].x, points[0].y);
             tempCtx.lineTo(points[1].x, points[1].y);
             
-            const A = toY - fromY;
-            const B = fromX - toX;
-            const C = toX * fromY - fromX * toY;
+            const A = shape.to.y - shape.from.y;
+            const B = shape.from.x - shape.to.x;
+            const C = shape.to.x * shape.from.y - shape.from.x * shape.to.y;
             
             if (shape.shadedSide === 'left') {
               if (A * 0 + B * 0 + C > 0) {
@@ -514,65 +497,6 @@
       link.download = 'kew-radius-map.png';
       link.href = tempCanvas.toDataURL('image/png');
       link.click();
-    }
-    
-    function getExtendedLinePointsForDownload(x1, y1, x2, y2) {
-      const points = [];
-      
-      // Calculate line parameters
-      const dx = x2 - x1;
-      const dy = y2 - y1;
-      
-      // Handle vertical line case
-      if (dx === 0) {
-        return [
-          { x: x1, y: 0 },
-          { x: x1, y: originalHeight }
-        ];
-      }
-      
-      // Handle horizontal line case
-      if (dy === 0) {
-        return [
-          { x: 0, y: y1 },
-          { x: originalWidth, y: y1 }
-        ];
-      }
-      
-      // Calculate intersection with all four edges
-      // Top edge (y = 0)
-      const topX = x1 + (0 - y1) * dx / dy;
-      if (topX >= 0 && topX <= originalWidth) {
-        points.push({ x: topX, y: 0 });
-      }
-      
-      // Bottom edge (y = originalHeight)
-      const bottomX = x1 + (originalHeight - y1) * dx / dy;
-      if (bottomX >= 0 && bottomX <= originalWidth) {
-        points.push({ x: bottomX, y: originalHeight });
-      }
-      
-      // Left edge (x = 0)
-      const leftY = y1 + (0 - x1) * dy / dx;
-      if (leftY >= 0 && leftY <= originalHeight) {
-        points.push({ x: 0, y: leftY });
-      }
-      
-      // Right edge (x = originalWidth)
-      const rightY = y1 + (originalWidth - x1) * dy / dx;
-      if (rightY >= 0 && rightY <= originalHeight) {
-        points.push({ x: originalWidth, y: rightY });
-      }
-      
-      // We should have exactly 2 points where the line intersects canvas edges
-      if (points.length >= 2) {
-        // Sort points to maintain consistent order
-        points.sort((a, b) => a.x - b.x || a.y - b.y);
-        return [points[0], points[points.length - 1]];
-      }
-      
-      // Fallback - return original points if we can't find intersections
-      return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
     }
   </script>
 </body>
